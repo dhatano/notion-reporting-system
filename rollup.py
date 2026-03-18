@@ -78,7 +78,7 @@ def collect_wbs_ids():
                 f"https://api.notion.com/v1/pages/{ticket_id}",
                 headers=headers
             ).json()
-            for wbs_id in get_relation_ids(ticket_page, "Master Schedule (WBS)"):
+            for wbs_id in get_relation_ids(ticket_page, "Schedule"):
                 wbs_ids.add(wbs_id)
 
     print(f"Found {len(wbs_ids)} unique WBS items.")

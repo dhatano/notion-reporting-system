@@ -163,7 +163,7 @@ def import_tickets(issues):
         if epic_key:
             wbs_page_id = get_wbs_page_id(epic_key)
             if wbs_page_id:
-                properties["Master Schedule (WBS)"] = {"relation": [{"id": wbs_page_id}]}
+                properties["Schedule"] = {"relation": [{"id": wbs_page_id}]}
 
         if key in existing:
             update_notion_page(existing[key], properties)
