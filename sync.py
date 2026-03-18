@@ -19,14 +19,14 @@ headers = {
     "Content-Type": "application/json"
 }
 
-SYNC_DAYS = 30  # 完了済みチケットの同期対象期間（日）
+SYNC_DAYS = 30  # Number of days to include completed tickets in sync
 
 # ----------------------------------------------------------------
-# 共通ユーティリティ
+# Utilities
 # ----------------------------------------------------------------
 
 def get_existing_pages(db_id, property_name="Ticket Number"):
-    """DBにある既存レコードを {ticket_number: page_id} で返す"""
+    """Return existing records in the DB as {ticket_number: page_id}"""
     existing = {}
     cursor = None
     while True:
@@ -48,7 +48,7 @@ def get_existing_pages(db_id, property_name="Ticket Number"):
     return existing
 
 def get_wbs_page_id(ticket_number):
-    """WBS DBからTicket Numberに一致するページIDを返す"""
+    """Return the page ID in WBS DB that matches the given Ticket Number"""
     res = requests.post(
         f"https://api.notion.com/v1/databases/{wbs_db_id}/query",
         headers=headers,
@@ -72,7 +72,7 @@ def status_to_notion(jira_status):
     return mapping.get(jira_status, jira_status)
 
 def update_notion_page(page_id, properties):
-    """既存Notionページのプロパティを更新する"""
+    """Update properties of an existing Notion page"""
     requests.patch(
         f"https://api.notion.com/v1/pages/{page_id}",
         headers=headers,
@@ -80,7 +80,7 @@ def update_notion_page(page_id, properties):
     )
 
 # ----------------------------------------------------------------
-# Step 1: EpicをWBS DBにインポート／更新
+# Step 1: Import / update Epics into WBS DB
 # ----------------------------------------------------------------
 
 def import_epics(issues):
@@ -98,7 +98,7 @@ def import_epics(issues):
         due = fields.duedate
 
         properties = {
-            "タイトル": {"title": [{"text": {"content": fields.summary or key}}]},
+            "Title": {"title": [{"text": {"content": fields.summary or key}}]},
             "Ticket Number": {"rich_text": [{"text": {"content": key}}]},
         }
         if start_date:
@@ -125,7 +125,7 @@ def import_epics(issues):
     print(f"WBS Done. Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
 
 # ----------------------------------------------------------------
-# Step 2: Task/StoryをTicket DBにインポート／更新
+# Step 2: Import / update Tasks and Stories into Ticket DB
 # ----------------------------------------------------------------
 
 def import_tickets(issues):
@@ -147,7 +147,7 @@ def import_tickets(issues):
         epic_key = parent.key if parent else None
 
         properties = {
-            "タイトル": {"title": [{"text": {"content": fields.summary or key}}]},
+            "Title": {"title": [{"text": {"content": fields.summary or key}}]},
             "Ticket Number": {"rich_text": [{"text": {"content": key}}]},
             "Description": {"rich_text": [{"text": {"content": str(fields.description or "")[:2000]}}]},
             "Status": {"multi_select": [{"name": status}]},
@@ -180,7 +180,7 @@ def import_tickets(issues):
                 print(f"✅ Ticket Imported: {key} - {fields.summary}")
                 imported += 1
 
-                # WBS側のTicketsリレーションにも追加
+                # Also update the Tickets relation on the WBS side
                 if epic_key and wbs_page_id:
                     wbs_res = requests.get(
                         f"https://api.notion.com/v1/pages/{wbs_page_id}",
@@ -199,7 +199,7 @@ def import_tickets(issues):
     print(f"Ticket Done. Imported: {imported}, Updated: {updated}")
 
 # ----------------------------------------------------------------
-# メイン
+# Main
 # ----------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -212,5 +212,5 @@ if __name__ == "__main__":
     issues = jira.search_issues(jql, maxResults=500)
     print(f"Found {len(issues)} issues.")
 
-    import_epics(issues)   # Step 1: WBS先行
-    import_tickets(issues) # Step 2: Ticket後続
+    import_epics(issues)   # Step 1: WBS must come first
+    import_tickets(issues) # Step 2: Tickets link back to WBS
