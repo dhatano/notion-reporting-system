@@ -63,13 +63,14 @@ def get_wbs_page_id(ticket_number):
     return results[0]["id"] if results else None
 
 def status_to_notion(jira_status):
+    if "block" in jira_status.name.lower():
+        return "Blocked"
     mapping = {
-        "To Do": "To Do",
-        "In Progress": "In Progress",
-        "Done": "Done",
-        "Blocked": "Blocked",
+        "new": "To Do",
+        "indeterminate": "In Progress",
+        "done": "Done",
     }
-    return mapping.get(jira_status, jira_status)
+    return mapping.get(jira_status.statusCategory.key, "To Do")
 
 def update_notion_page(page_id, properties):
     """Update properties of an existing Notion page"""
@@ -139,7 +140,7 @@ def import_tickets(issues):
 
         key = issue.key
         fields = issue.fields
-        status = status_to_notion(fields.status.name)
+        status = status_to_notion(fields.status)
         due = fields.duedate
         estimate = getattr(fields, 'customfield_10016', None)
         start_date = getattr(fields, 'customfield_10015', None)
