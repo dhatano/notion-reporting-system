@@ -1,11 +1,12 @@
 # Notion Reporting System — Scripts
 
-Two Python scripts to automate your **Notion Reporting System** template.
+Three Python scripts to automate your **Notion Reporting System** template.
 
 | Script | What it does |
 |---|---|
 | `sync.py` | Jira → Notion: imports Epics and Tasks into the Work Items database with hierarchy, status, and category |
 | `rollup.py` | Notion → Notion: links Work Items to your latest Weekly (Task level) and Monthly (Epic level) reports based on Daily ticket logs |
+| `monthly_stats.py` | Notion → Notion: aggregates Work Items by Category and Status into the Monthly Stats database for chart visualization |
 
 ---
 
@@ -49,6 +50,7 @@ Edit `.env`:
 ```env
 NOTION_TOKEN=your_notion_integration_token
 NOTION_WORK_ITEMS_DB_ID=your_work_items_database_id
+NOTION_MONTHLY_STATS_DB_ID=your_monthly_stats_database_id
 NOTION_DAILY_DB_ID=your_daily_database_id
 NOTION_WEEKLY_DB_ID=your_weekly_database_id
 NOTION_MONTHLY_DB_ID=your_monthly_database_id
@@ -57,6 +59,8 @@ JIRA_SERVER=https://yourcompany.atlassian.net
 JIRA_EMAIL=you@example.com
 JIRA_API_TOKEN=your_jira_api_token
 JIRA_PROJECT_KEY=YOUR_PROJECT_KEY
+# Optional: map custom Jira issue type names to categories
+# JIRA_ISSUETYPE_MAP=CustomStory:Feature,CustomBug:Bug
 ```
 
 See below for how to obtain each value.
@@ -98,6 +102,9 @@ python sync.py
 
 # Notion → Notion (Work Items rollup to Weekly/Monthly)
 python rollup.py
+
+# Notion → Notion (monthly stats for charts)
+python monthly_stats.py
 ```
 
 ### sync.py
@@ -115,6 +122,14 @@ Imports all Jira issues into the **Work Items** database in two passes:
 | Task | Task |
 | Bug | Bug |
 | Change Request | Change Request |
+
+If your Jira uses different issue type names (e.g. in Japanese), add a custom mapping in `.env`:
+
+```env
+JIRA_ISSUETYPE_MAP=ストーリー:Feature,タスク:Task,バグ:Bug
+```
+
+Unknown issue types will print a warning and be skipped.
 
 **Sync scope** — by default syncs:
 - All issues that are **not Done**
@@ -137,6 +152,17 @@ Aggregates Work Items into Weekly and Monthly reports:
 
 If no Weekly or Monthly record exists (or has no Start Date), that step is silently skipped.
 
+### monthly_stats.py
+
+Aggregates Work Items into the **Monthly Stats** database for chart visualization in Monthly Dashboard:
+
+```bash
+python monthly_stats.py          # current month
+python monthly_stats.py 2026-03  # specific month
+```
+
+Counts Tasks (not Epics) by Category × Status where Planned End falls within the target month. Existing records for that month are cleared and rewritten on each run.
+
 ---
 
 ## Notion DB Setup
@@ -158,16 +184,27 @@ The Work Items database requires the following properties:
 
 Enable **Sub-items** in the database settings to get the Parent Item / Sub Item relations automatically.
 
+The **Monthly Stats** database requires:
+
+| Property | Type |
+|---|---|
+| Title | Title |
+| Month | Text (YYYY-MM) |
+| Category | Multi-select |
+| Status | Multi-select |
+| Count | Number |
+
 ---
 
 ## File Structure
 
 ```
 notion-reporting-system/
-├── sync.py          # Jira → Notion sync
-├── rollup.py        # Notion → Notion Work Items rollup
-├── .env             # Your credentials (never commit this)
-├── .env.example     # Credential template
+├── sync.py            # Jira → Notion sync
+├── rollup.py          # Notion → Notion Work Items rollup
+├── monthly_stats.py   # Notion → Notion monthly stats aggregation
+├── .env               # Your credentials (never commit this)
+├── .env.example       # Credential template
 └── README.md
 ```
 
