@@ -200,14 +200,32 @@ def import_tickets(issues):
 
     print(f"Ticket Done. Imported: {imported}, Updated: {updated}")
 
-def issuetype_to_category(type_name):
-    mapping = {
+def _build_issuetype_mapping():
+    base = {
         "Story": "Feature",
         "Task": "Task",
         "Bug": "Bug",
         "Change Request": "Change Request",
+        "Request": "Change Request",
+        "ストーリー": "Feature",
+        "タスク": "Task",
+        "バグ": "Bug",
     }
-    return mapping.get(type_name)
+    custom = os.environ.get("JIRA_ISSUETYPE_MAP", "")
+    for entry in custom.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            k, v = entry.split(":", 1)
+            base[k.strip()] = v.strip()
+    return base
+
+ISSUETYPE_MAP = _build_issuetype_mapping()
+
+def issuetype_to_category(type_name):
+    category = ISSUETYPE_MAP.get(type_name)
+    if category is None:
+        print(f"⚠️  Unknown issue type: '{type_name}'. Add to JIRA_ISSUETYPE_MAP in .env to map it.")
+    return category
 
 # ----------------------------------------------------------------
 # Step 3: Import / update all issues into Work Items DB
