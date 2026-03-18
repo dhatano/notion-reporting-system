@@ -163,6 +163,8 @@ python monthly_stats.py 2026-03  # specific month
 
 Counts Tasks (not Epics) by Category × Status where Planned End falls within the target month. Existing records for that month are cleared and rewritten on each run.
 
+The **Current Month** checkbox is automatically managed: each run clears the flag from all records, then sets it only on the newly written records for the target month. This allows chart views to filter by `Current Month = true` without manual filter updates.
+
 ---
 
 ## Notion DB Setup
@@ -193,6 +195,7 @@ The **Monthly Stats** database requires:
 | Category | Multi-select |
 | Status | Multi-select |
 | Count | Number |
+| Current Month | Checkbox |
 
 ---
 

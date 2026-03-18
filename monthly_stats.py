@@ -83,7 +83,25 @@ def collect_stats(target_month):
     return counts
 
 # ----------------------------------------------------------------
-# Step 2: Clear existing stats for the target month
+# Step 2: Clear Current Month flag from all records
+# ----------------------------------------------------------------
+
+def clear_current_month_flag():
+    print("Clearing Current Month flag from all records...")
+    pages = query_all(monthly_stats_db_id, filter={
+        "property": "Current Month",
+        "checkbox": {"equals": True}
+    })
+    for page in pages:
+        requests.patch(
+            f"https://api.notion.com/v1/pages/{page['id']}",
+            headers=headers,
+            json={"properties": {"Current Month": {"checkbox": False}}}
+        )
+    print(f"Cleared {len(pages)} records.")
+
+# ----------------------------------------------------------------
+# Step 3: Clear existing stats for the target month
 # ----------------------------------------------------------------
 
 def clear_existing_stats(target_month):
@@ -111,6 +129,7 @@ def write_stats(target_month, counts):
             "Category": {"multi_select": [{"name": category}]},
             "Status": {"multi_select": [{"name": status}]},
             "Count": {"number": count},
+            "Current Month": {"checkbox": True},
         }
         res = requests.post(
             "https://api.notion.com/v1/pages",
@@ -139,6 +158,7 @@ if __name__ == "__main__":
     print(f"Target month: {target_month}")
     counts = collect_stats(target_month)
     if counts:
+        clear_current_month_flag()
         clear_existing_stats(target_month)
         write_stats(target_month, counts)
     else:
