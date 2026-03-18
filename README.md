@@ -1,9 +1,11 @@
-# Notion Reporting System — Jira Sync
+# Notion Reporting System — Scripts
 
-A Python script to import and sync Jira issues into the **Notion Reporting System** template.
+Two Python scripts to automate your **Notion Reporting System** template.
 
-- Epics → WBS database
-- Tasks/Stories → Ticket database (linked to their parent Epic in WBS)
+| Script | What it does |
+|---|---|
+| `sync.py` | Jira → Notion: imports Epics into WBS, Tasks/Stories into Tickets |
+| `rollup.py` | Notion → Notion: links WBS items to your latest Weekly and Monthly reports based on Daily ticket logs |
 
 ---
 
@@ -11,7 +13,7 @@ A Python script to import and sync Jira issues into the **Notion Reporting Syste
 
 - Python 3.8+
 - A [Notion](https://notion.so) account with the Reporting System template installed
-- A [Jira](https://www.atlassian.com/software/jira) account (Free plan works)
+- A [Jira](https://www.atlassian.com/software/jira) account — Free plan works (`sync.py` only)
 
 ---
 
@@ -48,6 +50,9 @@ Edit `.env`:
 NOTION_TOKEN=your_notion_integration_token
 NOTION_TICKET_DB_ID=your_ticket_database_id
 NOTION_WBS_DB_ID=your_wbs_database_id
+NOTION_DAILY_DB_ID=your_daily_database_id
+NOTION_WEEKLY_DB_ID=your_weekly_database_id
+NOTION_MONTHLY_DB_ID=your_monthly_database_id
 
 JIRA_SERVER=https://yourcompany.atlassian.net
 JIRA_EMAIL=you@example.com
@@ -66,7 +71,7 @@ See below for how to obtain each value.
 1. Go to [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations)
 2. Click **New integration** → give it a name → Submit
 3. Copy the **Internal Integration Token**
-4. In Notion, open each database (Ticket DB and WBS DB), click **⋯ > Connect to** and select your integration
+4. In Notion, open the top-level **Reporting System** page, click **⋯ > Connect to** and select your integration — this grants access to all child databases at once
 
 ### Notion Database IDs
 
@@ -88,13 +93,22 @@ The 32-character string before the `?` is the database ID.
 
 ```bash
 source venv/bin/activate   # macOS/Linux
+
+# Jira → Notion
 python sync.py
+
+# Notion → Notion (WBS rollup to Weekly/Monthly)
+python rollup.py
 ```
 
-### What it does
+### sync.py
 
 1. **Step 1 — Sync Epics to WBS**: Fetches all Jira Epics and creates or updates records in your Notion WBS database (Title, Ticket Number, Planned Start, Planned End).
 2. **Step 2 — Sync Tickets**: Fetches Tasks and Stories, creates or updates records in your Notion Ticket database (Title, Status, Description, Estimate, Dates), and links each ticket to its parent Epic in WBS.
+
+### rollup.py
+
+Walks through all Daily records → collects linked Tickets → collects their WBS items → updates the **WBS Items** relation on the latest Weekly and Monthly records. If no Weekly or Monthly record exists, that step is silently skipped.
 
 ### Sync scope
 
@@ -113,8 +127,9 @@ SYNC_DAYS = 30  # days
 ## File Structure
 
 ```
-notion-jira-sync/
-├── sync.py          # Main sync script
+notion-reporting-system/
+├── sync.py          # Jira → Notion sync
+├── rollup.py        # Notion → Notion WBS rollup
 ├── .env             # Your credentials (never commit this)
 ├── .env.example     # Credential template
 └── README.md
