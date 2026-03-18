@@ -4,8 +4,8 @@ Two Python scripts to automate your **Notion Reporting System** template.
 
 | Script | What it does |
 |---|---|
-| `sync.py` | Jira → Notion: imports Epics into WBS, Tasks/Stories into Tickets |
-| `rollup.py` | Notion → Notion: links WBS items to your latest Weekly and Monthly reports based on Daily ticket logs |
+| `sync.py` | Jira → Notion: imports Epics and Tasks into the Work Items database with hierarchy, status, and category |
+| `rollup.py` | Notion → Notion: links Work Items to your latest Weekly (Task level) and Monthly (Epic level) reports based on Daily ticket logs |
 
 ---
 
@@ -22,8 +22,8 @@ Two Python scripts to automate your **Notion Reporting System** template.
 ### 1. Clone this repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/notion-jira-sync.git
-cd notion-jira-sync
+git clone https://github.com/dhatano/notion-reporting-system.git
+cd notion-reporting-system
 ```
 
 ### 2. Create a virtual environment and install dependencies
@@ -48,8 +48,7 @@ Edit `.env`:
 
 ```env
 NOTION_TOKEN=your_notion_integration_token
-NOTION_TICKET_DB_ID=your_ticket_database_id
-NOTION_WBS_DB_ID=your_wbs_database_id
+NOTION_WORK_ITEMS_DB_ID=your_work_items_database_id
 NOTION_DAILY_DB_ID=your_daily_database_id
 NOTION_WEEKLY_DB_ID=your_weekly_database_id
 NOTION_MONTHLY_DB_ID=your_monthly_database_id
@@ -77,7 +76,7 @@ See below for how to obtain each value.
 
 Open the database in Notion in your browser. The URL looks like:
 ```
-https://www.notion.so/your-workspace/326124302a49...?v=...
+https://www.notion.so/326124302a49...?v=...
 ```
 The 32-character string before the `?` is the database ID.
 
@@ -97,30 +96,67 @@ source venv/bin/activate   # macOS/Linux
 # Jira → Notion
 python sync.py
 
-# Notion → Notion (WBS rollup to Weekly/Monthly)
+# Notion → Notion (Work Items rollup to Weekly/Monthly)
 python rollup.py
 ```
 
 ### sync.py
 
-1. **Step 1 — Sync Epics to WBS**: Fetches all Jira Epics and creates or updates records in your Notion WBS database (Title, Ticket Number, Planned Start, Planned End).
-2. **Step 2 — Sync Tickets**: Fetches Tasks and Stories, creates or updates records in your Notion Ticket database (Title, Status, Description, Estimate, Dates), and links each ticket to its parent Epic in WBS.
+Imports all Jira issues into the **Work Items** database in two passes:
 
-### rollup.py
+1. **Epics first** — creates or updates Epic records (Type: Epic) with Planned Start/End
+2. **Tasks second** — creates or updates Task records (Type: Task) with Status, Category, Description, Estimate, and a link to their parent Epic
 
-Walks through all Daily records → collects linked Tickets → collects their WBS items → updates the **WBS Items** relation on the latest Weekly and Monthly records. If no Weekly or Monthly record exists, that step is silently skipped.
+**Category mapping** (from Jira issue type):
 
-### Sync scope
+| Jira issue type | Category |
+|---|---|
+| Story | Feature |
+| Task | Task |
+| Bug | Bug |
+| Change Request | Change Request |
 
-By default, the script syncs:
+**Sync scope** — by default syncs:
 - All issues that are **not Done**
-- Issues that were **updated within the last 30 days** (even if Done)
+- Issues **updated within the last 30 days** (even if Done)
 
 To change the window, edit `SYNC_DAYS` in `sync.py`:
 
 ```python
 SYNC_DAYS = 30  # days
 ```
+
+### rollup.py
+
+Aggregates Work Items into Weekly and Monthly reports:
+
+1. Collects all Tasks linked in Daily **Tickets Worked**
+2. Updates the latest **Weekly** record's WBS Items with those Tasks
+3. Traverses each Task's **Parent Item** to find its Epic
+4. Updates the latest **Monthly** record's WBS Items with those Epics
+
+If no Weekly or Monthly record exists (or has no Start Date), that step is silently skipped.
+
+---
+
+## Notion DB Setup
+
+The Work Items database requires the following properties:
+
+| Property | Type |
+|---|---|
+| Title | Title |
+| Ticket Number | Text |
+| Type | Multi-select (Epic / Task) |
+| Category | Multi-select (Feature / Bug / Task / Change Request) |
+| Status | Multi-select (To Do / In Progress / Done / Blocked) |
+| Planned Start | Date |
+| Planned End | Date |
+| Estimate (h) | Number |
+| Description | Text |
+| Parent Item | Relation (self — auto-created by Notion sub-items feature) |
+
+Enable **Sub-items** in the database settings to get the Parent Item / Sub Item relations automatically.
 
 ---
 
@@ -129,7 +165,7 @@ SYNC_DAYS = 30  # days
 ```
 notion-reporting-system/
 ├── sync.py          # Jira → Notion sync
-├── rollup.py        # Notion → Notion WBS rollup
+├── rollup.py        # Notion → Notion Work Items rollup
 ├── .env             # Your credentials (never commit this)
 ├── .env.example     # Credential template
 └── README.md
