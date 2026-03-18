@@ -13,6 +13,7 @@ jira = JIRA(
 notion_token = os.environ["NOTION_TOKEN"]
 ticket_db_id = os.environ["NOTION_TICKET_DB_ID"]
 wbs_db_id = os.environ["NOTION_WBS_DB_ID"]
+work_items_db_id = os.environ["NOTION_WORK_ITEMS_DB_ID"]
 headers = {
     "Authorization": f"Bearer {notion_token}",
     "Notion-Version": "2022-06-28",
@@ -199,6 +200,116 @@ def import_tickets(issues):
 
     print(f"Ticket Done. Imported: {imported}, Updated: {updated}")
 
+def issuetype_to_category(type_name):
+    mapping = {
+        "Story": "Feature",
+        "Task": "Task",
+        "Bug": "Bug",
+        "Change Request": "Change Request",
+    }
+    return mapping.get(type_name)
+
+# ----------------------------------------------------------------
+# Step 3: Import / update all issues into Work Items DB
+# ----------------------------------------------------------------
+
+def import_work_items(issues):
+    print("\n--- Step 3: Syncing Work Items ---")
+    existing = get_existing_pages(work_items_db_id)
+
+    # First pass: Epics (must exist before tasks set Parent Item)
+    epic_page_ids = {}  # {jira_key: notion_page_id}
+    imported = updated = 0
+
+    for issue in issues:
+        if issue.fields.issuetype.hierarchyLevel < 1:
+            continue
+
+        key = issue.key
+        fields = issue.fields
+        start_date = getattr(fields, 'customfield_10015', None)
+        due = fields.duedate
+
+        properties = {
+            "Title": {"title": [{"text": {"content": fields.summary or key}}]},
+            "Ticket Number": {"rich_text": [{"text": {"content": key}}]},
+            "Type": {"multi_select": [{"name": "Epic"}]},
+            "Status": {"multi_select": [{"name": status_to_notion(fields.status)}]},
+        }
+        if start_date:
+            properties["Planned Start"] = {"date": {"start": start_date}}
+        if due:
+            properties["Planned End"] = {"date": {"start": due}}
+
+        if key in existing:
+            update_notion_page(existing[key], properties)
+            epic_page_ids[key] = existing[key]
+            print(f"🔄 Work Item Updated (Epic): {key} - {fields.summary}")
+            updated += 1
+        else:
+            res = requests.post(
+                "https://api.notion.com/v1/pages",
+                headers=headers,
+                json={"parent": {"database_id": work_items_db_id}, "properties": properties}
+            )
+            if res.status_code == 200:
+                epic_page_ids[key] = res.json()["id"]
+                print(f"✅ Work Item Imported (Epic): {key} - {fields.summary}")
+                imported += 1
+            else:
+                print(f"❌ Work Item Failed (Epic): {key} - {res.json()}")
+
+    # Second pass: Tasks / Stories / Bugs / Change Requests
+    for issue in issues:
+        if issue.fields.issuetype.hierarchyLevel >= 1:
+            continue
+
+        key = issue.key
+        fields = issue.fields
+        status = status_to_notion(fields.status)
+        start_date = getattr(fields, 'customfield_10015', None)
+        due = fields.duedate
+        estimate = getattr(fields, 'customfield_10016', None)
+        parent = getattr(fields, 'parent', None)
+        epic_key = parent.key if parent else None
+        category = issuetype_to_category(fields.issuetype.name)
+
+        properties = {
+            "Title": {"title": [{"text": {"content": fields.summary or key}}]},
+            "Ticket Number": {"rich_text": [{"text": {"content": key}}]},
+            "Type": {"multi_select": [{"name": "Task"}]},
+            "Status": {"multi_select": [{"name": status}]},
+            "Description": {"rich_text": [{"text": {"content": str(fields.description or "")[:2000]}}]},
+        }
+        if category:
+            properties["Category"] = {"multi_select": [{"name": category}]}
+        if start_date:
+            properties["Planned Start"] = {"date": {"start": start_date}}
+        if due:
+            properties["Planned End"] = {"date": {"start": due}}
+        if estimate:
+            properties["Estimate (h)"] = {"number": float(estimate)}
+        if epic_key and epic_key in epic_page_ids:
+            properties["Parent Item"] = {"relation": [{"id": epic_page_ids[epic_key]}]}
+
+        if key in existing:
+            update_notion_page(existing[key], properties)
+            print(f"🔄 Work Item Updated (Task): {key} - {fields.summary}")
+            updated += 1
+        else:
+            res = requests.post(
+                "https://api.notion.com/v1/pages",
+                headers=headers,
+                json={"parent": {"database_id": work_items_db_id}, "properties": properties}
+            )
+            if res.status_code == 200:
+                print(f"✅ Work Item Imported (Task): {key} - {fields.summary}")
+                imported += 1
+            else:
+                print(f"❌ Work Item Failed (Task): {key} - {res.json()}")
+
+    print(f"Work Items Done. Imported: {imported}, Updated: {updated}")
+
 # ----------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------
@@ -213,5 +324,6 @@ if __name__ == "__main__":
     issues = jira.search_issues(jql, maxResults=500)
     print(f"Found {len(issues)} issues.")
 
-    import_epics(issues)   # Step 1: WBS must come first
-    import_tickets(issues) # Step 2: Tickets link back to WBS
+    import_epics(issues)      # Step 1: WBS must come first
+    import_tickets(issues)    # Step 2: Tickets link back to WBS
+    import_work_items(issues) # Step 3: Unified Work Items (Gantt)
