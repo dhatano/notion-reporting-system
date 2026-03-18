@@ -45,7 +45,13 @@ def get_relation_ids(page, property_name):
     """Return a list of page IDs from a relation property"""
     return [r["id"] for r in page["properties"].get(property_name, {}).get("relation", [])]
 
-def get_latest_page(db_id, date_property="Start"):
+def get_page(page_id):
+    return requests.get(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        headers=headers
+    ).json()
+
+def get_latest_page(db_id, date_property="Start (Date)"):
     """Return the page with the most recent date in date_property, or None"""
     pages = query_all(db_id, sorts=[{"property": date_property, "direction": "descending"}])
     for page in pages:
@@ -62,66 +68,80 @@ def update_relation(page_id, property_name, related_ids):
         json={"properties": {property_name: {"relation": [{"id": i} for i in related_ids]}}}
     )
 
+def get_label(page):
+    title = page["properties"].get("Title", {}).get("title", [])
+    return title[0]["plain_text"] if title else page["id"]
+
 # ----------------------------------------------------------------
-# Step 1: Collect WBS IDs from Daily → Ticket Worked → Master Schedule (WBS)
+# Step 1: Collect Task IDs from Daily → Tickets Worked (Work Items)
 # ----------------------------------------------------------------
 
-def collect_wbs_ids():
-    print("Collecting WBS IDs from Daily → Tickets → WBS...")
+def collect_task_ids():
+    print("Collecting Task IDs from Daily → Tickets Worked...")
     daily_pages = query_all(daily_db_id)
-    wbs_ids = set()
+    task_ids = set()
 
     for daily in daily_pages:
-        ticket_ids = get_relation_ids(daily, "Tickets Worked")
-        for ticket_id in ticket_ids:
-            ticket_page = requests.get(
-                f"https://api.notion.com/v1/pages/{ticket_id}",
-                headers=headers
-            ).json()
-            for wbs_id in get_relation_ids(ticket_page, "Schedule"):
-                wbs_ids.add(wbs_id)
+        for task_id in get_relation_ids(daily, "Tickets Worked"):
+            task_ids.add(task_id)
 
-    print(f"Found {len(wbs_ids)} unique WBS items.")
-    return list(wbs_ids)
+    print(f"Found {len(task_ids)} unique tasks.")
+    return list(task_ids)
 
 # ----------------------------------------------------------------
-# Step 2: Update latest Weekly
+# Step 2: Collect Epic IDs from Task → Parent Item
 # ----------------------------------------------------------------
 
-def update_weekly(wbs_ids):
+def collect_epic_ids(task_ids):
+    print("Collecting Epic IDs from Tasks → Parent Item...")
+    epic_ids = set()
+
+    for task_id in task_ids:
+        task_page = get_page(task_id)
+        for epic_id in get_relation_ids(task_page, "Parent Item"):
+            epic_ids.add(epic_id)
+
+    print(f"Found {len(epic_ids)} unique epics.")
+    return list(epic_ids)
+
+# ----------------------------------------------------------------
+# Step 3: Update latest Weekly (Task level)
+# ----------------------------------------------------------------
+
+def update_weekly(task_ids):
     print("\nUpdating latest Weekly...")
-    page = get_latest_page(weekly_db_id, "Start (Date)")
+    page = get_latest_page(weekly_db_id)
     if not page:
         print("No Weekly record found. Skipping.")
         return
-    title = page["properties"].get("Title", {}).get("title", [])
-    label = title[0]["plain_text"] if title else page["id"]
-    update_relation(page["id"], "WBS Items", wbs_ids)
-    print(f"✅ Weekly updated: {label}")
+    update_relation(page["id"], "WBS Items", task_ids)
+    print(f"✅ Weekly updated: {get_label(page)}")
 
 # ----------------------------------------------------------------
-# Step 3: Update latest Monthly
+# Step 4: Update latest Monthly (Epic level)
 # ----------------------------------------------------------------
 
-def update_monthly(wbs_ids):
+def update_monthly(epic_ids):
     print("\nUpdating latest Monthly...")
-    page = get_latest_page(monthly_db_id, "Start (Date)")
+    page = get_latest_page(monthly_db_id)
     if not page:
         print("No Monthly record found. Skipping.")
         return
-    title = page["properties"].get("Title", {}).get("title", [])
-    label = title[0]["plain_text"] if title else page["id"]
-    update_relation(page["id"], "WBS Items", wbs_ids)
-    print(f"✅ Monthly updated: {label}")
+    update_relation(page["id"], "WBS Items", epic_ids)
+    print(f"✅ Monthly updated: {get_label(page)}")
 
 # ----------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------
 
 if __name__ == "__main__":
-    wbs_ids = collect_wbs_ids()
-    if wbs_ids:
-        update_weekly(wbs_ids)
-        update_monthly(wbs_ids)
+    task_ids = collect_task_ids()
+    if not task_ids:
+        print("No tasks found in Daily logs. Nothing to update.")
     else:
-        print("No WBS items found. Nothing to update.")
+        update_weekly(task_ids)
+        epic_ids = collect_epic_ids(task_ids)
+        if epic_ids:
+            update_monthly(epic_ids)
+        else:
+            print("No parent Epics found. Monthly skipped.")
